@@ -3,23 +3,22 @@
     "skillMetadata": {
         "sections": [
             {
-                "name": "Options << Name of section",
+                "name": "Search",
                 "fields": [
                     {
-                        "name": "internal_python_variable_name",
-                        "type": "text",
-                        "label": "Setting Friendly Display Name",
-                        "value": "",
-                        "placeholder": "demo prompt in the input box"
+                        "name": "library_only",
+                        "type": "checkbox",
+                        "label": "Library only",
+                        "value": "True"
                     }
                 ]
             },
             {
-                "name": "Login << Name of another section",
+                "name": "Login",
                 "fields": [
                     {
                         "type": "label",
-                        "label": "Just a little bit of extra info for the user to understand following settings"
+                        "label": "NOTE: your password will be store in clear text, don't let anybody see your settings.json ..."
                     },
                     {
                         "name": "username",
