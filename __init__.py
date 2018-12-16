@@ -124,6 +124,10 @@ class AmznMusicSkill(CommonPlaySkill):
         else:
             return False
 
+    def shutdown(self):
+        if self.state != 'idle':
+            self.mediaplayer.stop()
+
     # @intent_file_handler('music.amzn.intent')
     # def handle_music_amzn(self, message):
     #     self.speak_dialog('music.amzn')
