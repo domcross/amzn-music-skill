@@ -1,5 +1,5 @@
 # <img src='https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/headphones.svg' card_color='#E09404' width='50' height='50' style='vertical-align:bottom'/>
- AMZN Music Player
+AMZN Music Player
 Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
 
 ## About
@@ -7,6 +7,8 @@ This skill requires an Amaz*n Music account and a subscription of type "music un
 
 ## Examples
 * "Hey ~~Alexa~~ Mycroft, play purple rain by prince on amaz*n music"
+* "Hey Mycroft, play the album 25 by adele"
+* "Hey Mycroft, play something by the foo fighters"
 
 ## Credits
 Dominik (@domcross)
