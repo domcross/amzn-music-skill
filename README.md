@@ -5,6 +5,8 @@ Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
 ## About
 This skill requires an Amaz*n Music account and a subscription of type "music unlimited" or "prime music" - even if you want to stream music from your own library only.
 
+NOTE: this will install apt-package 'vlc' as a requirement, which is a approx. 70MB download an will require additinal 250MB on your sd-card when unpacked...
+
 ## Examples
 * "Hey ~~Alexa~~ Mycroft, play purple rain by prince on amaz*n music"
 * "Hey Mycroft, play the album 25 by adele"
