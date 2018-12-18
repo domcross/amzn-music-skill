@@ -5,13 +5,15 @@ Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
 ## About
 This skill requires an Amaz*n Music account and a subscription of type "music unlimited" or "prime music" - even if you want to stream music from your own library only.
 
-
 ## Examples
 * "Hey ~~Alexa~~ Mycroft, play purple rain by prince on amaz*n music"
 
 ## Credits
 Dominik (@domcross)
-@Jaffa for [amaz*n music api python library](https://github.com/Jaffa/amazon-music)
+
+@Jaffa for the [amaz*n music api python library](https://github.com/Jaffa/amazon-music)
+
+@forslund for inspiration and code from [spotify-skill](https://github.com/forslund/spotify-skill/)
 
 ## Troubleshooting
 In case you receive authentication errors you must go to [Amaz*n Music website](https://music.amazon.com/) and re-confirm your account.
@@ -22,4 +24,5 @@ Mycroft-Core has a requirement for python-vlc (version==1.1.2), probably you hav
 **Music**
 
 ## Tags
-#amzn#music
+#amzn
+#music

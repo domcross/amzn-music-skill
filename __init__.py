@@ -1,9 +1,11 @@
+import re
 # from mycroft import intent_file_handler
 from mycroft.audio.services.vlc import VlcService
 # mplayer stutters every 10sec when playin Amzn-Music's chunked mp3 streams
 # from mycroft.audio.services.mplayer import MPlayerService
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from mycroft.util.log import LOG
+from mycroft.util.parse import match_one  # fuzzy_match
 from os import listdir, path  # makedirs, remove,
 from os.path import dirname, join  # exists, expanduser, isfile, abspath, isdir
 from .amazonmusic import AmazonMusic
@@ -13,11 +15,11 @@ class AmznMusicSkill(CommonPlaySkill):
     def __init__(self):
         super().__init__(name="AmznMusicSkill")
         # self.mediaplayer = MPlayerService(config=None, bus=None)
-        self.mediaplayer = VlcService(config={'low_volume': 30, 'duck': False})
+        self.mediaplayer = VlcService(config={'low_volume': 10, 'duck': True})
         self.state = 'idle'
-        self.cps_id = "amazonmusic"
+        self.cps_id = "amzn-music"
         self.am = None
-        self.vocabs = []    # keep a list of vocabulary words
+        # self.vocabs = []    # keep a list of vocabulary words
         self.username = ""
         self.password = ""
         self.library_only = True
@@ -27,74 +29,286 @@ class AmznMusicSkill(CommonPlaySkill):
         self.password = self.settings.get("password", "")
         self.library_only = self.settings.get("library_only", True)
 
-        self._load_vocab_files()
+        # self._load_vocab_files()
 
         if self.username and self.password:
             LOG.debug("login to amazon music")
             self.am = AmazonMusic(credentials=[self.username, self.password])
         self.mediaplayer.clear_list()
+        # Setup handlers for playback control messages
+        self.add_event('mycroft.audio.service.next', self.next)
+        self.add_event('mycroft.audio.service.prev', self.previous)
+        self.add_event('mycroft.audio.service.pause', self.pause)
+        self.add_event('mycroft.audio.service.resume', self.resume)
+        self.add_event('mycroft.audio.service.lower_volume', self.lower_volume)
+        self.add_event('mycroft.audio.service.restore_volume',
+                       self.restore_volume)
+        self.add_event('recognizer_loop:audio_output_start', self.lower_volume)
+        self.add_event('recognizer_loop:record_begin', self.lower_volume)
+        self.add_event('recognizer_loop:audio_output_end', self.restore_volume)
+        self.add_event('recognizer_loop:record_end', self.restore_volume)
 
     def CPS_match_query_phrase(self, phrase):
-        LOG.debug("CPS_match_query_phrase: {}".format(phrase))
+        LOG.debug("phrase {} lib-only".format(phrase, self.library_only))
+        # Not ready to play
         if not self.am:
-            if self.voc_match(phrase, "Amazon"):
-                # User is most likely trying to use Amazon Music, e.g.
-                # "play amazon" or "play John Denver using Amazon Music"
-                return (self.cps_id, CPSMatchLevel.GENERIC)
+            return None
 
-        LOG.debug("try search")
-        clean_phrase = self._clean_utterance(phrase)
-        am_result = self.am.search(clean_phrase, library_only=self.library_only)
-        if am_result:
-            for ar in am_result:
-                cat_name = ar[0]
-                match_level = self._get_match_level_by_category(cat_name)
-                LOG.debug(cat_name)
-                hits = ar[1]['hits']
-                for h in hits:
-                    dockeys = h['document'].keys()
-                    if 'name' in dockeys:
-                        name = h['document']['name']
-                        LOG.debug("name: {}".format(name))
-                    elif 'title' in dockeys:
-                        name = h['document']['title']
-                        LOG.debug("title: {}".format(name))
-                    else:
-                        name = ""
-                        LOG.debug("unknown")
-                    if name:
-                        data = {'name': name, 'asin': h['document']['asin'], 'category': cat_name}
-                        if "tracks" in cat_name:
-                            data['albumAsin'] = h['document']['albumAsin']
-                        return (clean_phrase, match_level, data)
-        elif self.voc_match(phrase, "Amazon"):
-            # User has setup Amazon Music on their account and said Amazon,
-            # so is likely trying to start Amazon, e.g.
-            # "play amazon" or "play some music on amazon"
-            return (self.cps_id, CPSMatchLevel.CATEGORY)
+        if 'amazon' in phrase.lower():
+            bonus = 0.1
+        else:
+            bonus = 0
+
+        phrase = re.sub(self.translate('on_amazon_regex'), '', phrase)
+        LOG.debug("phrase {}".format(phrase))
+        confidence, data = self.continue_playback(phrase, bonus)
+        if not data:
+            confidence, data = self.specific_query(phrase, bonus)
+            if not data:
+                confidence, data = self.generic_query(phrase, bonus)
+
+        if data:
+            if confidence > 0.9:
+                confidence = CPSMatchLevel.EXACT
+            elif confidence > 0.7:
+                confidence = CPSMatchLevel.MULTI_KEY
+            elif confidence > 0.5:
+                confidence = CPSMatchLevel.TITLE
+            else:
+                confidence = CPSMatchLevel.CATEGORY
+            return phrase, confidence, data
+
+    def continue_playback(self, phrase, bonus=0.0):
+        LOG.debug("phrase {}".format(phrase))
+        if phrase.strip() == 'amazon':
+            return (1.0,
+                    {
+                        'data': None,
+                        'name': None,
+                        'type': 'continue'
+                    })
+        else:
+            return None, None
+
+    def specific_query(self, phrase, bonus=0.0):
+        LOG.debug("phrase {}".format(phrase))
+        # Check if playlist
+        match = re.match(self.translate('playlist_regex'), phrase)
+        LOG.debug("match playlist {}".format(match))
+        if match:
+            bonus += 0.1
+            playlist, conf, data = self.get_best_playlist(match.groupdict()['playlist'])
+            confidence = min(conf + bonus, 1.0)
+            if not playlist:
+                return 0, None
+            #uri = self.playlists[playlist]
+            return (confidence,
+                    {
+                        'asin': data['asin'],
+                        'title': data['title'],
+                        'name': playlist,
+                        'type': 'Playlist'
+                    })
+        # Check album
+        match = re.match(self.translate('album_regex'), phrase)
+        LOG.debug("match album {}".format(phrase))
+        if match:
+            bonus += 0.1
+            album = match.groupdict()['album']
+            return self.query_album(album, bonus)
+
+        # Check artist
+        match = re.match(self.translate('artist_regex'), phrase)
+        LOG.debug("match artist {}".format(phrase))
+        if match:
+            bonus += 0.1
+            artist = match.groupdict()['artist']
+            return self.query_artist(artist, bonus)
+        match = re.match(self.translate('song_regex'), phrase)
+        LOG.debug("match song {}".format(phrase))
+        if match:
+            bonus += 0.1
+            track = match.groupdict()['track']
+            return self.query_track(track, bonus)
+        return None, None
+
+    def generic_query(self, phrase, bonus=0.0):
+        LOG.debug("phrase {}".format(phrase))
+
+        playlist, conf, asin = self.get_best_playlist(phrase)
+        if conf > 0.5:
+            return (conf,
+                    {
+                        'asin': asin,
+                        'name': playlist,
+                        'type': 'Playlist'
+                    })
+        else:
+            return self.query_album(phrase, bonus)
+
+    def query_track(self, trackname, bonus=0.0):
+        LOG.debug("trackname {}".format(trackname))
+        by_word = ' {} '.format(self.translate('by'))
+        artist = ""
+        if len(trackname.split(by_word)) > 1:
+            trackname, artist = trackname.split(by_word)
+            # trackname = '*{}* artist:{}'.format(trackname, artist)
+            bonus += 0.1
+        LOG.debug("trackname {} artist {}".format(trackname, artist))
+
+        results = self.am.search(trackname, library_only=self.library_only,
+                                 tracks=True, albums=False, playlists=False,
+                                 artists=False, stations=False)
+
+        tracks = {}
+        for res in results:
+            if 'track' in res[0]:
+                for hit in res[1]['hits']:
+                    title = hit['document']['title'].lower()
+                    if artist:
+                        title += (' ' + hit['document']['artistName'].lower())
+                    #name = hit['document']['title'].lower()
+                    asin = hit['document']['asin']
+                    tracks[title] = {'asin': asin,
+                                     'albumAsin': hit['document']['albumAsin'],
+                                     'artist': hit['document']['artistName'],
+                                     'title': hit['document']['title']}
+        if tracks:
+            match = trackname
+            if artist:
+                match += (' ' + artist)
+            key, confidence = match_one(match.lower(),
+                                        list(tracks.keys()))
+            if confidence > 0.7:
+                confidence = min(confidence + bonus, 1.0)
+                return (confidence,
+                        {
+                            'asin': tracks[key]['asin'],
+                            'albumAsin': tracks[key]['albumAsin'],
+                            'name': key,
+                            'artist': tracks[key]['artist'],
+                            'title': tracks[key]['title'],
+                            'type': 'Song'
+                        })
+        return None, None
+
+    def query_artist(self, artist, bonus=0.0):
+        results = self.am.search(artist, library_only=self.library_only,
+                                   tracks=False, albums=False, playlists=False,
+                                   artists=True, stations=False)
+
+        artists = {}
+        for res in results:
+            if 'artists' in res[0]:
+                for hit in res[1]['hits']:
+                    name = hit['document']['name'].lower()
+                    asin = hit['document']['asin']
+                    artists[name] = {'asin': asin,
+                                     'name': hit['document']['name']}
+        if artists:
+            key, confidence = match_one(artist.lower(),
+                                        list(artists.keys()))
+            if confidence > 0.7:
+                confidence = min(confidence + bonus, 1.0)
+                return (confidence,
+                        {
+                            'asin': artists[key]['asin'],
+                            'name': key,
+                            'artist': artists[key]['name'],
+                            'type': 'Artist'
+                        })
+        return None, None
+
+    def query_album(self, album, bonus=0.0):
+        LOG.debug("album {}".format(album))
+        by_word = ' {} '.format(self.translate('by'))
+        artist = ""
+        if len(album.split(by_word)) > 1:
+            album, artist = album.split(by_word)
+            #album = '*{}* artist:{}'.format(album, artist)
+            bonus += 0.1
+        LOG.debug("album {} artist {}".format(album, artist))
+
+        results = self.am.search(album, library_only=self.library_only,
+                                 tracks=False, albums=True, playlists=False,
+                                 artists=False, stations=False)
+
+        albums = {}
+        for res in results:
+            if 'album' in res[0]:
+                for hit in res[1]['hits']:
+                    title = hit['document']['title'].lower()
+                    if artist:
+                        title += (' ' + hit['document']['artistName'].lower())
+                    asin = hit['document']['asin']
+                    albums[title] = {'asin': asin,
+                                     'artist': hit['document']['artistName'],
+                                     'title': hit['document']['title']}
+        if albums:
+            match = album
+            if artist:
+                match += (' ' + artist)
+            key, confidence = match_one(match.lower(),
+                                        list(albums.keys()))
+            if confidence > 0.7:
+                confidence = min(confidence + bonus, 1.0)
+                return (confidence,
+                        {
+                            'asin': albums[key]['asin'],
+                            'artist': albums[key]['artist'],
+                            'title': albums[key]['title'],
+                            'name': key,
+                            'type': 'Album'
+                        })
+        return None, None
+
+    def get_best_playlist(self, playlist):
+        """ Get best playlist matching the provided name
+
+        Arguments:
+            playlist (str): Playlist name
+
+        Returns: (str) best match, confidence, asin
+        """
+        LOG.debug("playlist {}".format(playlist))
+        results = self.am.search(playlist, library_only=self.library_only,
+                                 tracks=False, albums=False, playlists=True,
+                                 artists=False, stations=False)
+        playlists = {}
+        for res in results:
+            # LOG.debug(res[0])
+            if 'playlist' in res[0]:
+                for hit in res[1]['hits']:
+                    title = hit['document']['title'].lower()
+                    asin = hit['document']['asin']
+                    playlists[title] = {'asin': asin,
+                                        'title': hit['document']['title']}
+        if playlists:
+            key, confidence = match_one(playlist.lower(),
+                                        list(playlists.keys()))
+            LOG.debug("key {} confidence {}".format(key, confidence))
+            if confidence > 0.7:
+                return key, confidence, playlists[key]
+        return None, 0, None
 
     def CPS_start(self, phrase, data):
         LOG.debug("phrase: {} data: {}".format(phrase, data))
         tracklist = []
+        if 'continue' in data['type']:
+            self.resume()
+            return
         # single track
-        if 'tracks' in data['category']:
-            stream_url = ""
-            album = self.am.get_album(data['albumAsin'])
-            for track in album.tracks:
-                if (track.identifierType == 'ASIN') and \
-                   (track.identifier == data['asin']):
-                    LOG.debug("getting url for {}".format(track.name))
-                    try:
-                        stream_url = track.stream_url
-                    except Exception as e:
-                        LOG.error(e)
-                    break
-            LOG.debug(stream_url)
+        if 'Song' in data['type']:
+            stream_url = self._get_track_url_from_album(data['asin'],
+                                                        data['albumAsin'])
             if stream_url:
                 tracklist.append(stream_url)
-        elif 'albums' in data['category']:
-            album = self.am.get_album(data['asin'])
-            for track in album.tracks:
+        elif ('Album' in data['type']) or ('Playlist' in data['type']):
+            if 'Album' in data['type']:
+                entity = self.am.get_album(data['asin'])
+            else:
+                entity = self.am.get_playlists(data['asin'])
+            for track in entity.tracks:
                 stream_url = ""
                 LOG.debug("getting url for {}".format(track.name))
                 try:
@@ -105,16 +319,75 @@ class AmznMusicSkill(CommonPlaySkill):
                 LOG.debug(stream_url)
                 if stream_url:
                     tracklist.append(stream_url)
+        elif 'Artist' in data['type']:
+            results = self.am.search(data['name'],
+                                     library_only=self.library_only,
+                                     tracks=True, albums=False, playlists=False,
+                                     artists=False, stations=False)
+            for res in results:
+                for hit in res[1]['hits']:
+                    if hit['document']['artistAsin'] == data['asin']:
+                        album_asin = hit['document']['albumAsin']
+                        track_asin = hit['document']['asin']
+                        stream_url = self._get_track_url_from_album(track_asin,
+                                                                    album_asin)
+                        if stream_url:
+                            tracklist.append(stream_url)
+
         # TODO artists, playlists, stations
         if len(tracklist):
-            if self.state != 'idle':
+            if self.state in ['playing', 'paused']:
                 self.mediaplayer.stop()
-            self.mediaplayer.clear_list()
+                self.mediaplayer.clear_list()
             self.mediaplayer.add_list(tracklist)
+            self.speak(self._get_play_message(data))
             self.mediaplayer.play()
             self.state = 'playing'
         else:
             LOG.debug("empty tracklist!")
+
+    def _get_play_message(self, data):
+        message = ""
+        data_type = data['type']
+        if data_type == 'Album':
+            message = self.dialog_renderer.render(
+                    "ListeningTo{}".format(data_type), {
+                        'album': data['title'],
+                        'artist': data['artist']
+                    })
+        elif data_type == 'Song':
+            message = self.dialog_renderer.render(
+                    "ListeningTo{}".format(data_type), {
+                        'tracks': data['title'],
+                        'artist': data['artist']
+                    })
+        elif data_type == 'Artist':
+            message = self.dialog_renderer.render(
+                    "ListeningTo{}".format(data_type), {
+                        'artist': data['artist']
+                    })
+        elif data_type == 'Playlist':
+            message = self.dialog_renderer.render(
+                    "ListeningTo{}".format(data_type), {
+                        'playlist': data['name']
+                    })
+        return message
+
+    def _get_track_url_from_album(self, track_asin, album_asin):
+        LOG.debug("track_asin {}, album_asin {}".format(track_asin, album_asin))
+        stream_url = ""
+        album = self.am.get_album(album_asin)
+        for track in album.tracks:
+            if (track.identifierType == 'ASIN') and \
+               (track.identifier == track_asin):
+                LOG.debug("getting url for {}".format(track.name))
+                try:
+                    stream_url = track.stream_url
+                except Exception as e:
+                    LOG.error(e)
+                break
+        #LOG.debug(stream_url)
+        return stream_url
 
     def stop(self):
         if self.state != 'idle':
@@ -124,9 +397,48 @@ class AmznMusicSkill(CommonPlaySkill):
         else:
             return False
 
+    def pause(self):
+        if self.state == 'playing':
+            self.mediaplayer.pause()
+            self.state = 'paused'
+            return True
+        return False
+
+    def resume(self):
+        if self.state == 'paused':
+            self.mediaplayer.resume()
+            self.state = 'playing'
+            return True
+        return False
+
+    def next(self):
+        if self.state == 'playing':
+            self.mediaplayer.next()
+            return True
+        return False
+
+    def previous(self):
+        if self.state == 'playing':
+            self.mediaplayer.previous()
+            return True
+        return False
+
+    def lower_volume(self):
+        if self.state == 'playing':
+            self.mediaplayer.lower_volume()
+            return True
+        return False
+
+    def restore_volume(self):
+        if self.state == 'playing':
+            self.mediaplayer.restore_volume()
+            return True
+        return False
+
     def shutdown(self):
         if self.state != 'idle':
             self.mediaplayer.stop()
+            self.mediaplayer.clear_list()
 
     # @intent_file_handler('music.amzn.intent')
     # def handle_music_amzn(self, message):
@@ -136,17 +448,19 @@ class AmznMusicSkill(CommonPlaySkill):
         # Keep a list of all the vocabulary words for this skill.  Later
         # these words will be removed from utterances as part of the station
         # name.
-        vocab_dir = join(dirname(__file__), 'vocab', self.lang)
-        if path.exists(vocab_dir):
-            for vocab_type in listdir(vocab_dir):
-                if vocab_type.endswith(".voc"):
-                    with open(join(vocab_dir, vocab_type), 'r') as voc_file:
-                        for line in voc_file:
-                            parts = line.strip().split("|")
-                            vocab = parts[0]
-                            self.vocabs.append(vocab)
-        else:
-            LOG.error('No vocab loaded, ' + vocab_dir + ' does not exist')
+        vocab_dirs = [join(dirname(__file__), 'vocab', self.lang),
+                      join(dirname(__file__), 'locale', self.lang)]
+        for vocab_dir in vocab_dirs:
+            if path.exists(vocab_dir):
+                for vocab_type in listdir(vocab_dir):
+                    if vocab_type.endswith(".voc"):
+                        with open(join(vocab_dir, vocab_type), 'r') as voc_file:
+                            for line in voc_file:
+                                parts = line.strip().split("|")
+                                vocab = parts[0]
+                                self.vocabs.append(vocab)
+        if not self.vocabs:
+            LOG.error('No vocab loaded, ' + vocab_dirs + ' does not exist')
 
     def _clean_utterance(self, utterance):
         LOG.debug("in {}".format(utterance))
