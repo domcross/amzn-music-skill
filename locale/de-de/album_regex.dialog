@@ -1,1 +1,1 @@
-(album|aufnahme) (?P<album>.+)
+(album|aufnahme|lp|cd) (?P<album>.+)

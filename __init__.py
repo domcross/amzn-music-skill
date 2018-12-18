@@ -5,7 +5,7 @@ from mycroft.audio.services.vlc import VlcService
 # from mycroft.audio.services.mplayer import MPlayerService
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from mycroft.util.log import LOG
-from mycroft.util.parse import match_one  # fuzzy_match
+from mycroft.util.parse import match_one, fuzzy_match
 from os import listdir, path  # makedirs, remove,
 from os.path import dirname, join  # exists, expanduser, isfile, abspath, isdir
 from .amazonmusic import AmazonMusic
@@ -19,7 +19,7 @@ class AmznMusicSkill(CommonPlaySkill):
         self.state = 'idle'
         self.cps_id = "amzn-music"
         self.am = None
-        # self.vocabs = []    # keep a list of vocabulary words
+        self.vocabs = []  # keep a list of vocabulary words
         self.username = ""
         self.password = ""
         self.library_only = True
@@ -28,7 +28,6 @@ class AmznMusicSkill(CommonPlaySkill):
         self.username = self.settings.get("username", "")
         self.password = self.settings.get("password", "")
         self.library_only = self.settings.get("library_only", True)
-
         # self._load_vocab_files()
 
         if self.username and self.password:
@@ -48,6 +47,10 @@ class AmznMusicSkill(CommonPlaySkill):
         self.add_event('recognizer_loop:audio_output_end', self.restore_volume)
         self.add_event('recognizer_loop:record_end', self.restore_volume)
 
+        self.add_event('mycroft.audio.service.track_info', self._track_info_handler)
+        self.add_event('mycroft.audio.playing_track', self._playing_track_handler)
+        self.mediaplayer.set_track_start_callback(self._track_start_handler)
+
     def CPS_match_query_phrase(self, phrase):
         LOG.debug("phrase {} lib-only".format(phrase, self.library_only))
         # Not ready to play
@@ -59,8 +62,11 @@ class AmznMusicSkill(CommonPlaySkill):
         else:
             bonus = 0
 
-        phrase = re.sub(self.translate('on_amazon_regex'), '', phrase)
-        LOG.debug("phrase {}".format(phrase))
+        #phrase = re.sub(self.translate('on_amazon_regex'), '', phrase)
+        #LOG.debug("phrase {}".format(phrase))
+        phrase = self._clean_utterance(phrase)
+        LOG.debug("clean phrase {}".format(phrase))
+
         confidence, data = self.continue_playback(phrase, bonus)
         if not data:
             confidence, data = self.specific_query(phrase, bonus)
@@ -97,11 +103,11 @@ class AmznMusicSkill(CommonPlaySkill):
         LOG.debug("match playlist {}".format(match))
         if match:
             bonus += 0.1
-            playlist, conf, data = self.get_best_playlist(match.groupdict()['playlist'])
+            playlist, conf, data = \
+                self.get_best_playlist(match.groupdict()['playlist'])
             confidence = min(conf + bonus, 1.0)
             if not playlist:
                 return 0, None
-            #uri = self.playlists[playlist]
             return (confidence,
                     {
                         'asin': data['asin'],
@@ -116,7 +122,6 @@ class AmznMusicSkill(CommonPlaySkill):
             bonus += 0.1
             album = match.groupdict()['album']
             return self.query_album(album, bonus)
-
         # Check artist
         match = re.match(self.translate('artist_regex'), phrase)
         LOG.debug("match artist {}".format(phrase))
@@ -124,12 +129,20 @@ class AmznMusicSkill(CommonPlaySkill):
             bonus += 0.1
             artist = match.groupdict()['artist']
             return self.query_artist(artist, bonus)
+        # Check song/track
         match = re.match(self.translate('song_regex'), phrase)
         LOG.debug("match song {}".format(phrase))
         if match:
             bonus += 0.1
             track = match.groupdict()['track']
             return self.query_track(track, bonus)
+        # Check genre
+        match = re.match(self.translate('genre_regex'), phrase)
+        LOG.debug("match genre {}".format(phrase))
+        if match:
+            bonus += 0.1
+            genre = match.groupdict()['genre']
+            return self.query_genre(genre, bonus)
         return None, None
 
     def generic_query(self, phrase, bonus=0.0):
@@ -145,6 +158,32 @@ class AmznMusicSkill(CommonPlaySkill):
                     })
         else:
             return self.query_album(phrase, bonus)
+
+    def query_genre(self, genre, bonus=0.0):
+        LOG.debug("genre {}".format(genre))
+        results = self.am.search(genre, library_only=self.library_only,
+                                 tracks=True, albums=False, playlists=False,
+                                 artists=False, stations=False)
+        best_score = 0.0
+        best_match = ""
+        for res in results:
+            if 'track' in res[0]:
+                for hit in res[1]['hits']:
+                    primaryGenre = hit['document']['primaryGenre']
+                    score = fuzzy_match(genre.lower(), primaryGenre.lower())
+                    if score > best_score:
+                        best_match = primaryGenre
+                        best_score = score
+                    if (best_score + bonus) >= 1.0:
+                        break
+        if best_score > 0.0:
+            conf = min(best_score + bonus, 1.0)
+            return (conf,
+                    {
+                        'genre': best_match,
+                        'name': genre,
+                        'type': 'Genre'
+                    })
 
     def query_track(self, trackname, bonus=0.0):
         LOG.debug("trackname {}".format(trackname))
@@ -167,7 +206,6 @@ class AmznMusicSkill(CommonPlaySkill):
                     title = hit['document']['title'].lower()
                     if artist:
                         title += (' ' + hit['document']['artistName'].lower())
-                    #name = hit['document']['title'].lower()
                     asin = hit['document']['asin']
                     tracks[title] = {'asin': asin,
                                      'albumAsin': hit['document']['albumAsin'],
@@ -194,8 +232,8 @@ class AmznMusicSkill(CommonPlaySkill):
 
     def query_artist(self, artist, bonus=0.0):
         results = self.am.search(artist, library_only=self.library_only,
-                                   tracks=False, albums=False, playlists=False,
-                                   artists=True, stations=False)
+                                 tracks=False, albums=False, playlists=False,
+                                 artists=True, stations=False)
 
         artists = {}
         for res in results:
@@ -225,7 +263,6 @@ class AmznMusicSkill(CommonPlaySkill):
         artist = ""
         if len(album.split(by_word)) > 1:
             album, artist = album.split(by_word)
-            #album = '*{}* artist:{}'.format(album, artist)
             bonus += 0.1
         LOG.debug("album {} artist {}".format(album, artist))
 
@@ -322,19 +359,18 @@ class AmznMusicSkill(CommonPlaySkill):
         elif 'Artist' in data['type']:
             results = self.am.search(data['name'],
                                      library_only=self.library_only,
-                                     tracks=True, albums=False, playlists=False,
+                                     tracks=True, albums=False,
+                                     playlists=False,
                                      artists=False, stations=False)
-            for res in results:
-                for hit in res[1]['hits']:
-                    if hit['document']['artistAsin'] == data['asin']:
-                        album_asin = hit['document']['albumAsin']
-                        track_asin = hit['document']['asin']
-                        stream_url = self._get_track_url_from_album(track_asin,
-                                                                    album_asin)
-                        if stream_url:
-                            tracklist.append(stream_url)
+            tracklist = self._get_tracklist_from_searchresult(results, data)
+        elif 'Genre' in data['type']:
+            results = self.am.search(data['genre'],
+                                     library_only=self.library_only,
+                                     tracks=True, albums=False,
+                                     playlists=False,
+                                     artists=False, stations=False)
+            tracklist = self._get_tracklist_from_searchresult(results, data)
 
-        # TODO artists, playlists, stations
         if len(tracklist):
             if self.state in ['playing', 'paused']:
                 self.mediaplayer.stop()
@@ -345,6 +381,28 @@ class AmznMusicSkill(CommonPlaySkill):
             self.state = 'playing'
         else:
             LOG.debug("empty tracklist!")
+
+    def _get_tracklist_from_searchresult(self, result, data):
+        tracklist = []
+        for res in result:
+                for hit in res[1]['hits']:
+                    stream_url = ""
+                    if data['type'] == 'Artist':
+                        if hit['document']['artistAsin'] == data['asin']:
+                            album_asin = hit['document']['albumAsin']
+                            track_asin = hit['document']['asin']
+                            stream_url = self._get_track_url_from_album(
+                                track_asin, album_asin)
+                    elif data['type'] == 'Genre':
+                        if hit['document']['primaryGenre'] == data['genre']:
+                            album_asin = hit['document']['albumAsin']
+                            track_asin = hit['document']['asin']
+                            stream_url = self._get_track_url_from_album(
+                                track_asin, album_asin)
+
+                    if stream_url:
+                        tracklist.append(stream_url)
+        return tracklist
 
     def _get_play_message(self, data):
         message = ""
@@ -371,10 +429,16 @@ class AmznMusicSkill(CommonPlaySkill):
                     "ListeningTo{}".format(data_type), {
                         'playlist': data['name']
                     })
+        elif data_type == 'Genre':
+            message = self.dialog_renderer.render(
+                    "ListeningTo{}".format(data_type), {
+                        'genre': data['genre']
+                    })
         return message
 
     def _get_track_url_from_album(self, track_asin, album_asin):
-        LOG.debug("track_asin {}, album_asin {}".format(track_asin, album_asin))
+        LOG.debug("track_asin {}, album_asin {}".format(track_asin,
+                                                        album_asin))
         stream_url = ""
         album = self.am.get_album(album_asin)
         for track in album.tracks:
@@ -386,7 +450,7 @@ class AmznMusicSkill(CommonPlaySkill):
                 except Exception as e:
                     LOG.error(e)
                 break
-        #LOG.debug(stream_url)
+        # LOG.debug(stream_url)
         return stream_url
 
     def stop(self):
@@ -440,6 +504,15 @@ class AmznMusicSkill(CommonPlaySkill):
             self.mediaplayer.stop()
             self.mediaplayer.clear_list()
 
+    def _track_start_handler(self):
+        LOG.debug("_track_start_handler")
+
+    def _playing_track_handler(self):
+        LOG.debug("_playing_track_handler")
+
+    def _track_info_handler(self):
+        LOG.debug("_track_info_handler")
+
     # @intent_file_handler('music.amzn.intent')
     # def handle_music_amzn(self, message):
     #     self.speak_dialog('music.amzn')
@@ -454,8 +527,8 @@ class AmznMusicSkill(CommonPlaySkill):
             if path.exists(vocab_dir):
                 for vocab_type in listdir(vocab_dir):
                     if vocab_type.endswith(".voc"):
-                        with open(join(vocab_dir, vocab_type), 'r') as voc_file:
-                            for line in voc_file:
+                        with open(join(vocab_dir, vocab_type), 'r') as vocfile:
+                            for line in vocfile:
                                 parts = line.strip().split("|")
                                 vocab = parts[0]
                                 self.vocabs.append(vocab)
@@ -463,24 +536,23 @@ class AmznMusicSkill(CommonPlaySkill):
             LOG.error('No vocab loaded, ' + vocab_dirs + ' does not exist')
 
     def _clean_utterance(self, utterance):
-        LOG.debug("in {}".format(utterance))
+        # LOG.debug("in {}".format(utterance))
         utt = utterance.split(" ")
         common_words = self.translate("common.words").split(",")
-        LOG.debug("common_words {}".format(common_words))
-        LOG.debug("vocabs {}".format(self.vocabs))
-        #for vocab in self.vocabs:
-        #    utterance = utterance.replace(' ' + vocab + ' ', " ")
+        # LOG.debug("common_words {}".format(common_words))
+        # LOG.debug("vocabs {}".format(self.vocabs))
         for i in range(0, len(utt)):
             if utt[i] in self.vocabs or utt[i] in common_words:
                 utt[i] = ""
-
         res = ""
         for u in utt:
             res += "{} ".format(u)
-        res.replace("  ", " ")
-        res.lstrip()
-        LOG.debug("out {}".format(res))
-        return res
+        prev_len = len(res) + 1
+        while prev_len > len(res):
+            res.replace("  ", " ")
+            prev_len = len(res)
+        # LOG.debug("out {}".format(res))
+        return res.strip()
 
     def _get_match_level_by_category(self, cat_name):
         LOG.debug(cat_name)

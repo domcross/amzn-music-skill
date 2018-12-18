@@ -1,1 +1,1 @@
-(dem sänger|der sängerin|dem künstler|der künstlerin|der gruppe|der band|etwas von) (?P<artist>.+)
+(sänger|sängerin|künstler|künstlerin|gruppe|band|etwas von) (?P<artist>.+)

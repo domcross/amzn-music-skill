@@ -1,1 +1,1 @@
-(die|meine) (amazon |)(playlist|liste) (?P<playlist>.+)
+(meine |)(amazon |)(playlist|liste) (?P<playlist>.+)

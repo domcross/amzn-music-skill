@@ -1,1 +1,1 @@
-(den|das|der) (song|lied|titel) (?P<track>.+)
+(song|lied|titel|track) (?P<track>.+)
