@@ -6,9 +6,13 @@ Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
 This skill requires an Amaz*n Music account and a subscription of type "music unlimited" or "prime music" - even if you want to stream music from your own library only.
 
 After skill is installed is you must either:
-a) enter your login credentials at home.mycroft.ai > Skills > Amzn music - WARNING: with this option your Amaz\*n username and password will be stored i) on a server hosted by mycroft.ai and ii) in clear text in the skills 'settings.json' file.
-b) run './credentials.py' in the skills directory and enter your login credentials there. In this case your credentials will be stored encoded & pickled in file 'credentials.store' - this option is recommended if you care for privacy. NOTE: file 'credentials.store' must be owned by mycroft:mycroft - either run credentials.py as user 'mycroft' or sudo chown mycroft:mycroft credentals.store afterwards.
 
+a) enter your login credentials at home.mycroft.ai > Skills > Amzn music
+WARNING: with this option your Amaz\*n username and password will be stored i) on a server hosted by mycroft.ai and ii) in clear text in the skills 'settings.json' file.
+
+b) run './credentials.py' in the skills directory and enter your login credentials there.
+In this case your credentials will be stored encoded & pickled in file 'credentials.store' - this option is recommended if you care for privacy.
+NOTE: file 'credentials.store' must be owned by mycroft:mycroft - either run credentials.py as user 'mycroft' or sudo chown mycroft:mycroft credentals.store afterwards.
 
 NOTE: this was tested only on Mycroft Mark-1 and PiCroft (both running Debian Jessie) and will probably run (not tested yet) on PiCroft with Debian Stretch.
 Most likely this will not run on Ubuntu or other OS without tweaking requirements.sh at least (any assistance here is welcome)
