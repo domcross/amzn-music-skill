@@ -1,4 +1,6 @@
 import re
+import pickle
+import base64
 # from mycroft import intent_file_handler
 from mycroft.audio.services.vlc import VlcService
 # mplayer stutters every 10sec when playin Amzn-Music's chunked mp3 streams
@@ -29,6 +31,13 @@ class AmznMusicSkill(CommonPlaySkill):
         self.password = self.settings.get("password", "")
         self.library_only = self.settings.get("library_only", True)
         # self._load_vocab_files()
+
+        # handle credentials
+        if (not self.username) and (not self.password):
+            credentials = self._load_credentials_store()
+            if credentials:
+                self.username = base64.b64decode(credentials['e'])
+                self.password = base64.b64decode(credentials['p'])
 
         if self.username and self.password:
             LOG.debug("login to amazon music")
@@ -516,6 +525,24 @@ class AmznMusicSkill(CommonPlaySkill):
     # @intent_file_handler('music.amzn.intent')
     # def handle_music_amzn(self, message):
     #     self.speak_dialog('music.amzn')
+
+    """
+    Read credentials from file 'credentials.store' that is located in
+    the skills base directory, e.g. /opt/mycroft/skills/amzn-music.comcross
+    The credentials file is a pickled dictionary where the data is
+    base64 encoded. This isn't super secure but will hinder the casual
+    shoulder surfer to read the password
+    """
+    def _load_credentials_store(self):
+        credentials = {}
+        skill_dir = dirname(__file__)
+        credentials_file = 'credentials.store'
+        if path.exists(skill_dir):
+            file_list = listdir(skill_dir)
+            if credentials_file in file_list:
+                with open(skill_dir + '/' + credentials_file, 'rb') as f:
+                    credentials = pickle.load(f)
+        return credentials
 
     def _load_vocab_files(self):
         # Keep a list of all the vocabulary words for this skill.  Later

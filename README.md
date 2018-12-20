@@ -5,10 +5,12 @@ Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
 ## About
 This skill requires an Amaz*n Music account and a subscription of type "music unlimited" or "prime music" - even if you want to stream music from your own library only.
 
-WARNING: your Amaz\*n username and password will be stored in clear text in the skills settings.json.
-Make sure to protect your Mycroft device (e.g. use secure passwords for ssh-user), otherwise your Amaz\*n account might be compromised - shopping spree for someone else on your (bank) account.
+After skill is installed is you must either:
+a) enter your login credentials at home.mycroft.ai > Skills > Amzn music - WARNING: with this option your Amaz\*n username and password will be stored i) on a server hosted by mycroft.ai and ii) in clear text in the skills 'settings.json' file.
+b) run './credentials.py' in the skills directory and enter your login credentials there. In this case your credentials will be stored encoded & pickled in file 'credentials.store' - this option is recommended if you care for privacy. NOTE: file 'credentials.store' must be owned by mycroft:mycroft - either run credentials.py as user 'mycroft' or sudo chown mycroft:mycroft credentals.store afterwards.
 
-NOTE: this was tested only on Mycroft Mark-1 and PiCroft (both running Debian Jessie) and will probably run on PiCroft with Debian Stretch.
+
+NOTE: this was tested only on Mycroft Mark-1 and PiCroft (both running Debian Jessie) and will probably run (not tested yet) on PiCroft with Debian Stretch.
 Most likely this will not run on Ubuntu or other OS without tweaking requirements.sh at least (any assistance here is welcome)
 
 NOTE: this will install 'VLC media player' as a requirement, which is a approx. 70MB download an will require additinal 250MB on your sd-card when unpacked...
@@ -36,9 +38,9 @@ Mycroft-Core has a requirement for python-vlc (version==1.1.2), probably you hav
 
 The MP3-stream is encoded with 22KHz sampling rate. The same stream-URL played with VLC on my desktop (iMac) plays with 44KHz.
 
-Sometimes the audio service is broken. A reboot of your Mycroft device helps in that case...
+Sometimes the audio service gets broken and Mycroft will no longer play the MP3 stream. A reboot of your Mycroft device helps in that case...
 
-The Amaz*n music service seems to have a limit on maximum concurrent connections and/or number of request over a time period.
+The Amaz*n music service seems to have a limit on maximum concurrent connections and/or number of request over a certain time period.
 If no music is played watch your logs for error messages...
 
 
