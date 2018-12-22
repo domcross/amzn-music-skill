@@ -399,8 +399,8 @@ class AmznMusicSkill(CommonPlaySkill):
             self.mediaplayer.add_list(tracklist)
             self.speak(self._get_play_message(data))
             metadata = self._get_play_ui_data(data)
-            LOG.debug("metadata {}".format(metadata)
-            self.enclosure.bus.emit(Message("metadata", metadata))
+            LOG.debug("metadata {}".format(metadata))
+            self.enclosure.bus.emit(Message("metadata", data=metadata))
             self.mediaplayer.play()
             self.state = 'playing'
         else:
