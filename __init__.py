@@ -431,7 +431,7 @@ class AmznMusicSkill(CommonPlaySkill):
     def _get_play_ui_data(self, data):
         data_type = data['type']
         ui_data = {}
-        ui_data["type"] = "amzn-music-skill.domcross"
+        ui_data["type"] = "amzn-music-skill"
 
         if data_type == 'Album':
             ui_data["upperText"] = "{}: {}".format(data_type, data['title'])
