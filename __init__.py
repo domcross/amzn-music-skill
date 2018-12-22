@@ -400,7 +400,11 @@ class AmznMusicSkill(CommonPlaySkill):
             self.speak(self._get_play_message(data))
             metadata = self._get_play_ui_data(data)
             LOG.debug("metadata {}".format(metadata))
-            self.enclosure.bus.emit(Message("metadata", data=metadata))
+            # self.enclosure.bus.emit(Message("metadata", data=metadata))
+            self.gui["upperText"] = metadata['upperText']
+            self.gui["lowerText"] = metadata['lowerText']
+            self.gui["imgLink"] = metadata['imgLink']
+            self.gui.show_page("Main.qml")
             self.mediaplayer.play()
             self.state = 'playing'
         else:
