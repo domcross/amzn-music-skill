@@ -5,6 +5,7 @@ import base64
 from mycroft.audio.services.vlc import VlcService
 # mplayer stutters every 10sec when playin Amzn-Music's chunked mp3 streams
 # from mycroft.audio.services.mplayer import MPlayerService
+from mycroft.messagebus.message import Message
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from mycroft.util.log import LOG
 from mycroft.util.parse import match_one, fuzzy_match
@@ -157,14 +158,18 @@ class AmznMusicSkill(CommonPlaySkill):
     def generic_query(self, phrase, bonus=0.0):
         LOG.debug("phrase {}".format(phrase))
 
-        playlist, conf, asin = self.get_best_playlist(phrase)
+        playlist, conf, data = self.get_best_playlist(phrase)
+        # playlist, conf, asin = self.get_best_playlist(phrase)
         if conf > 0.5:
             return (conf,
                     {
-                        'asin': asin,
+                        'asin': data['asin'],
+                        'title': data['title'],
+                        'artULR': data['artURL'],
                         'name': playlist,
                         'type': 'Playlist'
                     })
+
         else:
             return self.query_album(phrase, bonus)
 
@@ -219,7 +224,9 @@ class AmznMusicSkill(CommonPlaySkill):
                     tracks[title] = {'asin': asin,
                                      'albumAsin': hit['document']['albumAsin'],
                                      'artist': hit['document']['artistName'],
-                                     'title': hit['document']['title']}
+                                     'title': hit['document']['title'],
+                                     'artURL': hit['document']['artFull']
+                                                  ['URL']}
         if tracks:
             match = trackname
             if artist:
@@ -235,6 +242,7 @@ class AmznMusicSkill(CommonPlaySkill):
                             'name': key,
                             'artist': tracks[key]['artist'],
                             'title': tracks[key]['title'],
+                            'artURL': tracks[key]['artURL'],
                             'type': 'Song'
                         })
         return None, None
@@ -251,7 +259,9 @@ class AmznMusicSkill(CommonPlaySkill):
                     name = hit['document']['name'].lower()
                     asin = hit['document']['asin']
                     artists[name] = {'asin': asin,
-                                     'name': hit['document']['name']}
+                                     'name': hit['document']['name'],
+                                     'artURL': hit['document']['artFull']
+                                                  ['URL']}
         if artists:
             key, confidence = match_one(artist.lower(),
                                         list(artists.keys()))
@@ -262,7 +272,8 @@ class AmznMusicSkill(CommonPlaySkill):
                             'asin': artists[key]['asin'],
                             'name': key,
                             'artist': artists[key]['name'],
-                            'type': 'Artist'
+                            'type': 'Artist',
+                            'artURL': artists[key]['artURL']
                         })
         return None, None
 
@@ -288,6 +299,8 @@ class AmznMusicSkill(CommonPlaySkill):
                         title += (' ' + hit['document']['artistName'].lower())
                     asin = hit['document']['asin']
                     albums[title] = {'asin': asin,
+                                     'artURL': hit['document']['artFull']
+                                                  ['URL'],
                                      'artist': hit['document']['artistName'],
                                      'title': hit['document']['title']}
         if albums:
@@ -303,6 +316,7 @@ class AmznMusicSkill(CommonPlaySkill):
                             'asin': albums[key]['asin'],
                             'artist': albums[key]['artist'],
                             'title': albums[key]['title'],
+                            'artURL': albums[key]['artURL'],
                             'name': key,
                             'type': 'Album'
                         })
@@ -328,6 +342,8 @@ class AmznMusicSkill(CommonPlaySkill):
                     title = hit['document']['title'].lower()
                     asin = hit['document']['asin']
                     playlists[title] = {'asin': asin,
+                                        'artURL': hit['document']['artFull']
+                                                     ['URL'],
                                         'title': hit['document']['title']}
         if playlists:
             key, confidence = match_one(playlist.lower(),
@@ -386,6 +402,7 @@ class AmznMusicSkill(CommonPlaySkill):
                 self.mediaplayer.clear_list()
             self.mediaplayer.add_list(tracklist)
             self.speak(self._get_play_message(data))
+            self.enclosure.bus.emit(Message("metadata", self._get_play_ui_data(data)))
             self.mediaplayer.play()
             self.state = 'playing'
         else:
@@ -412,6 +429,34 @@ class AmznMusicSkill(CommonPlaySkill):
                     if stream_url:
                         tracklist.append(stream_url)
         return tracklist
+
+    def _get_play_ui_data(self, data):
+        data_type = data['type']
+        ui_data = {}
+        ui_data["type"] = "amzn-music-skill.domcross"
+
+        if data_type == 'Album':
+            ui_data["upperText"] = "{}: {}".format(data_type, data['title'])
+            ui_data["lowerText"] = data['artist']
+            ui_data["imgLink"] = data['artURL']
+        elif data_type == 'Song':
+            ui_data["upperText"] = "{}: {}".format(data_type, data['title'])
+            ui_data["lowerText"] = data['artist']
+            ui_data["imgLink"] = data['artURL']
+        elif data_type == 'Artist':
+            ui_data["upperText"] = "{}".format(data_type)
+            ui_data["lowerText"] = data['artist']
+            ui_data["imgLink"] = data['artURL']
+        elif data_type == 'Playlist':
+            ui_data["upperText"] = "{}".format(data_type)
+            ui_data["lowerText"] = data['name']
+            ui_data["imgLink"] = data['artURL']
+        elif data_type == 'Genre':
+            ui_data["upperText"] = "{}".format(data_type)
+            ui_data["lowerText"] = data['genre']
+            ui_data["imgLink"] = data['artURL']
+
+        return ui_data
 
     def _get_play_message(self, data):
         message = ""
