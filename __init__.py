@@ -165,7 +165,7 @@ class AmznMusicSkill(CommonPlaySkill):
                     {
                         'asin': data['asin'],
                         'title': data['title'],
-                        'artULR': data['artURL'],
+                        'artURL': data['artURL'],
                         'name': playlist,
                         'type': 'Playlist'
                     })
@@ -225,8 +225,7 @@ class AmznMusicSkill(CommonPlaySkill):
                                      'albumAsin': hit['document']['albumAsin'],
                                      'artist': hit['document']['artistName'],
                                      'title': hit['document']['title'],
-                                     'artURL': hit['document']['artFull']
-                                                  ['URL']}
+                                     'artURL': hit['document']['artFull']['URL']}
         if tracks:
             match = trackname
             if artist:
@@ -260,8 +259,7 @@ class AmznMusicSkill(CommonPlaySkill):
                     asin = hit['document']['asin']
                     artists[name] = {'asin': asin,
                                      'name': hit['document']['name'],
-                                     'artURL': hit['document']['artFull']
-                                                  ['URL']}
+                                     'artURL': hit['document']['artFull']['URL']}
         if artists:
             key, confidence = match_one(artist.lower(),
                                         list(artists.keys()))
@@ -299,8 +297,7 @@ class AmznMusicSkill(CommonPlaySkill):
                         title += (' ' + hit['document']['artistName'].lower())
                     asin = hit['document']['asin']
                     albums[title] = {'asin': asin,
-                                     'artURL': hit['document']['artFull']
-                                                  ['URL'],
+                                     'artURL': hit['document']['artFull']['URL'],
                                      'artist': hit['document']['artistName'],
                                      'title': hit['document']['title']}
         if albums:
@@ -342,8 +339,7 @@ class AmznMusicSkill(CommonPlaySkill):
                     title = hit['document']['title'].lower()
                     asin = hit['document']['asin']
                     playlists[title] = {'asin': asin,
-                                        'artURL': hit['document']['artFull']
-                                                     ['URL'],
+                                        'artURL': hit['document']['artFull']['URL'],
                                         'title': hit['document']['title']}
         if playlists:
             key, confidence = match_one(playlist.lower(),
@@ -402,7 +398,9 @@ class AmznMusicSkill(CommonPlaySkill):
                 self.mediaplayer.clear_list()
             self.mediaplayer.add_list(tracklist)
             self.speak(self._get_play_message(data))
-            self.enclosure.bus.emit(Message("metadata", self._get_play_ui_data(data)))
+            metadata = self._get_play_ui_data(data)
+            LOG.debug("metadata {}".format(metadata)
+            self.enclosure.bus.emit(Message("metadata", metadata))
             self.mediaplayer.play()
             self.state = 'playing'
         else:
@@ -449,7 +447,7 @@ class AmznMusicSkill(CommonPlaySkill):
             ui_data["imgLink"] = data['artURL']
         elif data_type == 'Playlist':
             ui_data["upperText"] = "{}".format(data_type)
-            ui_data["lowerText"] = data['name']
+            ui_data["lowerText"] = data['title']
             ui_data["imgLink"] = data['artURL']
         elif data_type == 'Genre':
             ui_data["upperText"] = "{}".format(data_type)
