@@ -1,4 +1,4 @@
 *.pyc
 settings.json
 credentials.store
-qmlc
+*.qmlc
