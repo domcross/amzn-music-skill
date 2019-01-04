@@ -2,9 +2,10 @@ import re
 import pickle
 import base64
 # from mycroft import intent_file_handler
-from mycroft.audio.services.vlc import VlcService
+#from mycroft.audio.services.vlc import VlcService
 # mplayer stutters every 10sec when playin Amzn-Music's chunked mp3 streams
 # from mycroft.audio.services.mplayer import MPlayerService
+from mycroft.skills.audioservice import AudioService
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from mycroft.util.log import LOG
 from mycroft.util.parse import match_one, fuzzy_match
@@ -16,8 +17,6 @@ from .amazonmusic import AmazonMusic
 class AmznMusicSkill(CommonPlaySkill):
     def __init__(self):
         super().__init__(name="AmznMusicSkill")
-        # self.mediaplayer = MPlayerService(config=None, bus=None)
-        self.mediaplayer = VlcService(config={'low_volume': 10, 'duck': True})
         self.state = 'idle'
         self.cps_id = "amzn-music"
         self.am = None
@@ -27,6 +26,10 @@ class AmznMusicSkill(CommonPlaySkill):
         self.library_only = True
 
     def initialize(self):
+        # self.mediaplayer = MPlayerService(config=None, bus=None)
+        # self.mediaplayer = VlcService(config={'low_volume': 10, 'duck': True})
+        # self.mediaplayer = SimpleAudioService(config=None, bus=self.bus)
+        self.mediaplayer = AudioService(self.bus)
         self.username = self.settings.get("username", "")
         self.password = self.settings.get("password", "")
         self.library_only = self.settings.get("library_only", True)
@@ -42,23 +45,24 @@ class AmznMusicSkill(CommonPlaySkill):
         if self.username and self.password:
             LOG.debug("login to amazon music")
             self.am = AmazonMusic(credentials=[self.username, self.password])
-        self.mediaplayer.clear_list()
+        #self.mediaplayer.clear_list()
+        self.mediaplayer.queue()
         # Setup handlers for playback control messages
         self.add_event('mycroft.audio.service.next', self.next)
         self.add_event('mycroft.audio.service.prev', self.previous)
         self.add_event('mycroft.audio.service.pause', self.pause)
         self.add_event('mycroft.audio.service.resume', self.resume)
-        self.add_event('mycroft.audio.service.lower_volume', self.lower_volume)
-        self.add_event('mycroft.audio.service.restore_volume',
-                       self.restore_volume)
-        self.add_event('recognizer_loop:audio_output_start', self.lower_volume)
-        self.add_event('recognizer_loop:record_begin', self.lower_volume)
-        self.add_event('recognizer_loop:audio_output_end', self.restore_volume)
-        self.add_event('recognizer_loop:record_end', self.restore_volume)
+        #self.add_event('mycroft.audio.service.lower_volume', self.lower_volume)
+        #self.add_event('mycroft.audio.service.restore_volume',
+        #               self.restore_volume)
+        #self.add_event('recognizer_loop:audio_output_start', self.lower_volume)
+        #self.add_event('recognizer_loop:record_begin', self.lower_volume)
+        #self.add_event('recognizer_loop:audio_output_end', self.restore_volume)
+        #self.add_event('recognizer_loop:record_end', self.restore_volume)
 
-        self.add_event('mycroft.audio.service.track_info', self._track_info_handler)
-        self.add_event('mycroft.audio.playing_track', self._playing_track_handler)
-        self.mediaplayer.set_track_start_callback(self._track_start_handler)
+        #self.add_event('mycroft.audio.service.track_info', self._track_info_handler)
+        #self.add_event('mycroft.audio.playing_track', self._playing_track_handler)
+        #self.mediaplayer.set_track_start_callback(self._track_start_handler)
 
     def CPS_match_query_phrase(self, phrase):
         LOG.debug("phrase {} lib-only".format(phrase, self.library_only))
@@ -348,6 +352,7 @@ class AmznMusicSkill(CommonPlaySkill):
             stream_url = self._get_track_url_from_album(data['asin'],
                                                         data['albumAsin'])
             if stream_url:
+                LOG.debug(stream_url)
                 tracklist.append(stream_url)
         elif ('Album' in data['type']) or ('Playlist' in data['type']):
             if 'Album' in data['type']:
@@ -383,9 +388,12 @@ class AmznMusicSkill(CommonPlaySkill):
         if len(tracklist):
             if self.state in ['playing', 'paused']:
                 self.mediaplayer.stop()
-                self.mediaplayer.clear_list()
-            self.mediaplayer.add_list(tracklist)
+                self.mediaplayer.queue()
+                #self.mediaplayer.clear_list()
+            #self.mediaplayer.add_list(tracklist)
+            self.mediaplayer.queue(tracklist)
             self.speak(self._get_play_message(data))
+            # VLC service
             self.mediaplayer.play()
             self.state = 'playing'
         else:
@@ -511,7 +519,8 @@ class AmznMusicSkill(CommonPlaySkill):
     def shutdown(self):
         if self.state != 'idle':
             self.mediaplayer.stop()
-            self.mediaplayer.clear_list()
+            #self.mediaplayer.clear_list()
+            self.mediaplayer.queue()
 
     def _track_start_handler(self):
         LOG.debug("_track_start_handler")
