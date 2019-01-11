@@ -48,10 +48,10 @@ class AmznMusicSkill(CommonPlaySkill):
         #self.mediaplayer.clear_list()
         self.mediaplayer.queue()
         # Setup handlers for playback control messages
-        self.add_event('mycroft.audio.service.next', self.next)
-        self.add_event('mycroft.audio.service.prev', self.previous)
-        self.add_event('mycroft.audio.service.pause', self.pause)
-        self.add_event('mycroft.audio.service.resume', self.resume)
+        #self.add_event('mycroft.audio.service.next', self.next)
+        #self.add_event('mycroft.audio.service.prev', self.previous)
+        #self.add_event('mycroft.audio.service.pause', self.pause)
+        #self.add_event('mycroft.audio.service.resume', self.resume)
         #self.add_event('mycroft.audio.service.lower_volume', self.lower_volume)
         #self.add_event('mycroft.audio.service.restore_volume',
         #               self.restore_volume)
@@ -345,6 +345,7 @@ class AmznMusicSkill(CommonPlaySkill):
         LOG.debug("phrase: {} data: {}".format(phrase, data))
         tracklist = []
         if 'continue' in data['type']:
+            LOG.debug("contine -> resume")
             self.resume()
             return
         # single track
@@ -352,7 +353,7 @@ class AmznMusicSkill(CommonPlaySkill):
             stream_url = self._get_track_url_from_album(data['asin'],
                                                         data['albumAsin'])
             if stream_url:
-                LOG.debug(stream_url)
+                #LOG.debug(stream_url)
                 tracklist.append(stream_url)
         elif ('Album' in data['type']) or ('Playlist' in data['type']):
             if 'Album' in data['type']:
@@ -366,9 +367,8 @@ class AmznMusicSkill(CommonPlaySkill):
                     stream_url = track.stream_url
                 except Exception as e:
                     LOG.error(e)
-
-                LOG.debug(stream_url)
                 if stream_url:
+                    #LOG.debug(stream_url)
                     tracklist.append(stream_url)
         elif 'Artist' in data['type']:
             results = self.am.search(data['name'],
@@ -386,15 +386,21 @@ class AmznMusicSkill(CommonPlaySkill):
             tracklist = self._get_tracklist_from_searchresult(results, data)
 
         if len(tracklist):
-            if self.state in ['playing', 'paused']:
-                self.mediaplayer.stop()
-                self.mediaplayer.queue()
-                #self.mediaplayer.clear_list()
+            LOG.debug("tracklist {}".format(tracklist))
+            # when audioservice is paused the current track is resumed i
+            # instead of the new track getting played
+            # to fix this: resume then stop
+            #if self.state == 'paused':
+            #    self.resume()
+            self.stop()
+            self.mediaplayer.stop()
+            #self.mediaplayer.queue()
+            #self.mediaplayer.clear_list()
             #self.mediaplayer.add_list(tracklist)
-            self.mediaplayer.queue(tracklist)
+            #self.mediaplayer.queue(tracklist)
             self.speak(self._get_play_message(data))
             # VLC service
-            self.mediaplayer.play()
+            self.mediaplayer.play(tracklist)
             self.state = 'playing'
         else:
             LOG.debug("empty tracklist!")
@@ -470,8 +476,18 @@ class AmznMusicSkill(CommonPlaySkill):
         # LOG.debug(stream_url)
         return stream_url
 
+    def _is_playing(self):
+        #if self.mediaplayer.is_playing:
+        #    LOG.debug("playing")
+        #    self.state = 'playing'
+        #    #return True
+        #else:
+        #    LOG.debug("not playing")
+        return self.state == 'playing'
+
     def stop(self):
         if self.state != 'idle':
+            LOG.debug("stopping")
             self.mediaplayer.stop()
             self.state = 'idle'
             return True
@@ -479,7 +495,8 @@ class AmznMusicSkill(CommonPlaySkill):
             return False
 
     def pause(self):
-        if self.state == 'playing':
+        if self._is_playing():
+            LOG.debug("pausing")
             self.mediaplayer.pause()
             self.state = 'paused'
             return True
@@ -487,40 +504,46 @@ class AmznMusicSkill(CommonPlaySkill):
 
     def resume(self):
         if self.state == 'paused':
+            LOG.debug("resuming")
             self.mediaplayer.resume()
             self.state = 'playing'
             return True
         return False
 
     def next(self):
-        if self.state == 'playing':
+        if self._is_playing():
+            LOG.debug("next song")
             self.mediaplayer.next()
             return True
         return False
 
     def previous(self):
-        if self.state == 'playing':
+        if self._is_playing():
+            LOG.debug("previous song")
             self.mediaplayer.previous()
             return True
         return False
 
     def lower_volume(self):
-        if self.state == 'playing':
+        if self._is_playing():
+            LOG.debug("lowering volume")
             self.mediaplayer.lower_volume()
             return True
         return False
 
     def restore_volume(self):
-        if self.state == 'playing':
+        if self._is_playing():
+            LOG.debug("restoring volume")
             self.mediaplayer.restore_volume()
             return True
         return False
 
     def shutdown(self):
+        LOG.debug("shutting down")
         if self.state != 'idle':
             self.mediaplayer.stop()
-            #self.mediaplayer.clear_list()
-            self.mediaplayer.queue()
+        #self.mediaplayer.clear_list()
+        self.mediaplayer.queue()
 
     def _track_start_handler(self):
         LOG.debug("_track_start_handler")
