@@ -13,5 +13,5 @@ p = base64.b64encode(getpass('Password (input is hidden): ').encode('ascii'))
 
 credentials = {'e': e, 'p': p}
 
-with open('/opt/mycroft/skills/amzn-music-skill/credentials.store', 'wb') as f:
+with open('/opt/mycroft/skills/amzn-music-skill.domcross/credentials.store', 'wb') as f:
     pickle.dump(credentials, f, pickle.HIGHEST_PROTOCOL)
