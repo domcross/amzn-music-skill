@@ -1,3 +1,5 @@
+**DEPRECATED - this skill no longer works: Amazon Music now has mandatory two-factor-authentication which I will not implement**
+
 # <img src='https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/headphones.svg' card_color='#E09404' width='50' height='50' style='vertical-align:bottom'/>
 AMZN Music Player
 Makes Mycroft play your amaz*n music library as if its name was Alexa :-)
